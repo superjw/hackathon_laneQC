@@ -16,7 +16,9 @@ from sklearn.preprocessing import LabelEncoder
 # export QT_QPA_PLATFORM=offscreen
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-
+# Check if a GPU is available
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
 # Read data
 data = pd.read_csv("sonar.csv", header=None)
@@ -74,13 +76,18 @@ print(sum([x.reshape(-1).shape[0] for x in model1.parameters()]))  # 11161
 print(sum([x.reshape(-1).shape[0] for x in model2.parameters()]))  # 11041
 
 
-n_epochs = 300   # number of epochs to run
+n_epochs = 30   # number of epochs to run
 batch_size = 10  # size of each batch
 # loss function and optimizer
 loss_fn = nn.BCELoss()  # binary cross entropy
 
 # Helper function to train one model
-def model_train(model, X_train, y_train, X_val, y_val, loss_fn=nn.BCELoss(), n_epochs=300, batch_size=10):
+def model_train(model, X_train, y_train, X_val, y_val, loss_fn=nn.BCELoss(), n_epochs=300, batch_size=10, device=device):
+    X_train = X_train.to(device)
+    y_train = y_train.to(device)
+    X_val = X_val.to(device)
+    y_val = y_val.to(device)
+    model = model.to(device)
 
     # define optimizer
     optimizer=optim.Adam(model.parameters())
@@ -98,6 +105,9 @@ def model_train(model, X_train, y_train, X_val, y_val, loss_fn=nn.BCELoss(), n_e
                 # take a batch
                 X_batch = X_train[start:start+batch_size]
                 y_batch = y_train[start:start+batch_size]
+                print(f"X_batch is on {X_batch.device}")
+                print(f"y_batch is on {y_batch.device}")
+
                 # forward pass
                 y_pred = model(X_batch)
                 loss = loss_fn(y_pred, y_batch)
@@ -112,6 +122,7 @@ def model_train(model, X_train, y_train, X_val, y_val, loss_fn=nn.BCELoss(), n_e
                     loss=float(loss),
                     acc=float(acc)
                 )
+                print(y_pred.device)
         # evaluate accuracy at end of each epoch
         model.eval()
         y_pred = model(X_val)
@@ -126,21 +137,36 @@ def model_train(model, X_train, y_train, X_val, y_val, loss_fn=nn.BCELoss(), n_e
 
 # train-test split: Hold out the test set for final model evaluation
 X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.7, shuffle=True)
+# print(X_train.device)
+# print(y_train.device)
+# print(X_test.device)
+# print(y_test.device)
+# X_train = X_train.to(device)
+# y_train = y_train.to(device)
+# X_test = X_test.to(device)
+# y_test = y_test.to(device)
+# print(X_train.device)
+# print(y_train.device)
+# print(X_test.device)
+# print(y_test.device)
 
 # define 5-fold cross validation test harness
 kfold = StratifiedKFold(n_splits=5, shuffle=True)
+
 cv_scores_wide = []
 for train, test in kfold.split(X_train, y_train):
     # create model, train, and get accuracy
     model = Wide()
-    acc = model_train(model, X_train[train], y_train[train], X_train[test], y_train[test])
+    print(f"Fold----")
+    acc = model_train(model, X_train[train], y_train[train], X_train[test], y_train[test], loss_fn=loss_fn, n_epochs=n_epochs, batch_size=batch_size, device=device)
+
     print("Accuracy (wide): %.2f" % acc)
     cv_scores_wide.append(acc)
 cv_scores_deep = []
 for train, test in kfold.split(X_train, y_train):
     # create model, train, and get accuracy
     model = Deep()
-    acc = model_train(model, X_train[train], y_train[train], X_train[test], y_train[test], loss_fn=loss_fn, n_epochs=n_epochs, batch_size=batch_size)
+    acc = model_train(model, X_train[train], y_train[train], X_train[test], y_train[test], loss_fn=loss_fn, n_epochs=n_epochs, batch_size=batch_size, device=device)
 
     print("Accuracy (deep): %.2f" % acc)
     cv_scores_deep.append(acc)
@@ -164,11 +190,18 @@ acc = model_train(model, X_train, y_train, X_test, y_test)
 print(f"Final model accuracy: {acc*100:.2f}%")
 
 model.eval()
+# print(f"Final model parameters: {sum([x.reshape(-1).shape[0] for x in model.parameters()])}")
 with torch.no_grad():
     # Test out inference with 5 samples
     for i in range(5):
+        print(i)
+        model = model.to(device)
+        # print(f"model is on {model.device}")
+        X_test = X_test.to(device)
+        print(f"X_test is on {X_test.device}")
         y_pred = model(X_test[i:i+1])
-        print(f"{X_test[i].numpy()} -> {y_pred[0].numpy()} (expected {y_test[i].numpy()})")
+        print(f"y_pred is on {y_pred.device}")
+        print(f"{X_test[i].cpu().numpy()} -> {y_pred[0].cpu().numpy()} (expected {y_test[i].cpu().numpy()})")
 
     # Plot the ROC curve
     y_pred = model(X_test)
