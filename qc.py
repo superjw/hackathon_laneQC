@@ -204,7 +204,11 @@ with torch.no_grad():
         print(f"{X_test[i].cpu().numpy()} -> {y_pred[0].cpu().numpy()} (expected {y_test[i].cpu().numpy()})")
 
     # Plot the ROC curve
-    y_pred = model(X_test)
+    print("plotting ROC curve ----- ")
+    y_pred = model(X_test).detach().cpu().numpy()
+    # print(f"y_pred is on {y_pred.device} ===== ")
+    y_test = y_test.detach().cpu().numpy()
+    # print(f"y_test is on {y_test.device} ===== ")
     fpr, tpr, thresholds = roc_curve(y_test, y_pred)
     plt.plot(fpr, tpr) # ROC curve = TPR vs FPR
     plt.title("Receiver Operating Characteristics")
